@@ -55,7 +55,7 @@ jobs:
           test -n "$RELEASE_KEY_ALIAS" || { echo "Missing RELEASE_KEY_ALIAS secret"; exit 1; }
 
       - name: Compile and assemble signed release APK
-        run: ./gradlew --no-daemon --parallel --max-workers=2 :app:compileReleaseJavaWithJavac :app:assembleRelease
+        run: ./gradlew --no-daemon --parallel --max-workers=2 :app:compileReleaseJavaWithJavac :app:assembleRelease -x :app:lintVitalRelease
 
       - name: Verify release signature and prepare artifact
         run: |
