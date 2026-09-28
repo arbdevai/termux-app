@@ -16,12 +16,11 @@ uploads the APK and SHA-256 checksum as a workflow artifact. The workflow does n
 lint, or other quality gates. It caches Gradle dependencies and the checksum-verified ARM64
 bootstrap archive.
 
-The release workflow expects repository Actions secrets named `RELEASE_KEYSTORE_BASE64`,
-`RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_PASSWORD`, and `RELEASE_KEY_ALIAS`. Keep a secure
-backup of the keystore; every update must use the same signing key. Since this fork uses the
-`com.termux` application ID, a release signed with its own key cannot update an APK signed by
-Termux's official release key. Android requires uninstalling the other signing identity before
-installing this fork, which removes that app's private data unless it has been backed up.
+The release workflow signs with the repository's `app/testkey_untrusted.jks`. Its certificate
+matches the existing `DevBox_0.118.0.apk` signature (SHA-256 starts with
+`B6:DA:01:48`), so this build can update that installation without uninstalling it. This is a
+public shared test key, not a private or official Termux release key; do not use it to distribute
+trusted releases. Always keep a separate backup of Termux data before installing an update.
 
 
 [Termux](https://termux.dev) is an Android terminal application and Linux environment.

@@ -19,10 +19,10 @@ jobs:
       TERMUX_APP_VERSION_NAME: 0.118.0+${{ github.sha }}
       TERMUX_APP_VERSION_CODE: 119
       TERMUX_APK_VERSION_TAG: ${{ github.sha }}-android14-arm64-release
-      RELEASE_KEYSTORE_PATH: ${{ github.workspace }}/.signing/release-signing.p12
-      RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
-      RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-      RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+      RELEASE_KEYSTORE_PATH: ${{ github.workspace }}/app/testkey_untrusted.jks
+      RELEASE_KEYSTORE_PASSWORD: xrj45yWGLbsO7W0v
+      RELEASE_KEY_PASSWORD: xrj45yWGLbsO7W0v
+      RELEASE_KEY_ALIAS: alias
 
     steps:
       - name: Checkout source
@@ -42,17 +42,12 @@ jobs:
           key: termux-bootstrap-android7-2026.02.12-r1-arm64
 
       - name: Prepare release signing key
-        env:
-          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          test -n "$RELEASE_KEYSTORE_BASE64" || { echo "Missing RELEASE_KEYSTORE_BASE64 secret"; exit 1; }
-          mkdir -p .signing
-          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RELEASE_KEYSTORE_PATH"
-          chmod 600 "$RELEASE_KEYSTORE_PATH"
-          test -n "$RELEASE_KEYSTORE_PASSWORD" || { echo "Missing RELEASE_KEYSTORE_PASSWORD secret"; exit 1; }
-          test -n "$RELEASE_KEY_PASSWORD" || { echo "Missing RELEASE_KEY_PASSWORD secret"; exit 1; }
-          test -n "$RELEASE_KEY_ALIAS" || { echo "Missing RELEASE_KEY_ALIAS secret"; exit 1; }
+          test -n "$RELEASE_KEYSTORE_PASSWORD" || { echo "Release keystore password is missing"; exit 1; }
+          test -n "$RELEASE_KEY_PASSWORD" || { echo "Release key password is missing"; exit 1; }
+          test -n "$RELEASE_KEY_ALIAS" || { echo "Release key alias is missing"; exit 1; }
+          test -f "$RELEASE_KEYSTORE_PATH" || { echo "Bundled Termux-compatible keystore is missing"; exit 1; }
 
       - name: Compile and assemble signed release APK
         run: ./gradlew --no-daemon --parallel --max-workers=2 :app:compileReleaseJavaWithJavac :app:assembleRelease -x :app:lintVitalRelease
