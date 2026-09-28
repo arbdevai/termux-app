@@ -76,7 +76,15 @@ import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 
 /**
  * A terminal emulator activity.
@@ -98,6 +106,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final String DEVBOX_UI_PREFERENCES = "devbox_ui_preferences";
     private static final String KEY_TERMINAL_CANVAS_INSET = "terminal_canvas_inset_dp";
     private static final String KEY_TERMINAL_CANVAS_PRESET = "terminal_canvas_preset";
+    private static final String KEY_TERMINAL_FONT = "terminal_font";
+    private static final String CHROOT_CODER_HOME = "/data/local/ubuntu-chroot/home/coder";
     private int mSelectedScreen = SCREEN_WORKSPACE;
     private int mTerminalCanvasInsetDp;
     private int mTerminalCanvasPreset = -1;
@@ -111,7 +121,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private TextView mTerminalFontSizeLabel;
     private SeekBar mTerminalFontSizeSeekBar;
     private LinearLayout mTerminalPresetOptions;
+    private LinearLayout mTerminalFontOptions;
     private LinearLayout mFileList;
+    private final Set<String> mRootListedDirectories = new HashSet<>();
+    private ArrayList<File> mRootBrowserEntries;
+    private String mRootBrowserPath;
     private final ArrayList<View> mNavigationItems = new ArrayList<>();
 
     /**
@@ -877,6 +891,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mCurrentFileDirectory = new File(TermuxConstants.TERMUX_STORAGE_HOME_DIR_PATH, "shared");
             refreshFileList();
         });
+        addPillButton(locations, "Chroot home", () -> {
+            mCurrentFileDirectory = new File(CHROOT_CODER_HOME);
+            mRootBrowserEntries = null;
+            refreshFileList();
+        });
         mFilesContent.addView(locations, pageLayout());
 
         LinearLayout pathCard = premiumCard(false);
@@ -895,7 +914,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mFileList == null || mCurrentFileDirectory == null) return;
         mFilesPathLabel.setText(mCurrentFileDirectory.getAbsolutePath());
         mFileList.removeAllViews();
-        if (!mCurrentFileDirectory.equals(new File(TermuxConstants.TERMUX_HOME_DIR_PATH))) {
+        if (!mCurrentFileDirectory.equals(new File(TermuxConstants.TERMUX_HOME_DIR_PATH)) &&
+            !mCurrentFileDirectory.equals(new File(CHROOT_CODER_HOME))) {
             addFileRow("‹  Parent folder", "Go up one level", true, () -> {
                 File parent = mCurrentFileDirectory.getParentFile();
                 if (parent != null) mCurrentFileDirectory = parent;
@@ -903,20 +923,33 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             });
         }
         File[] entries = mCurrentFileDirectory.listFiles();
-        if (entries == null) {
+        ArrayList<File> browserEntries = new ArrayList<>();
+        if (entries != null) browserEntries.addAll(Arrays.asList(entries));
+        else if (isInsideChrootHome(mCurrentFileDirectory.getAbsolutePath()) &&
+            mCurrentFileDirectory.getAbsolutePath().equals(mRootBrowserPath) && mRootBrowserEntries != null) {
+            browserEntries.addAll(mRootBrowserEntries);
+        } else if (isInsideChrootHome(mCurrentFileDirectory.getAbsolutePath())) {
+            addEmptyState(mFileList, "Chroot folder needs root access", "Allow DevBox root access to browse this folder.");
+            TextView rootBrowse = premiumText("BROWSE WITH ROOT  ›", 11, true, R.color.neon_violet_soft);
+            rootBrowse.setPadding(dp(12), dp(14), dp(12), dp(14));
+            rootBrowse.setOnClickListener(v -> loadChrootDirectoryWithRoot());
+            mFileList.addView(rootBrowse, pageLayout());
+            return;
+        } else {
             addEmptyState(mFileList, "Folder unavailable", "This location is not mounted or cannot be read.");
             return;
         }
-        Arrays.sort(entries, (left, right) -> {
-            if (left.isDirectory() != right.isDirectory()) return left.isDirectory() ? -1 : 1;
+        browserEntries.sort((left, right) -> {
+            if (isBrowserDirectory(right) != isBrowserDirectory(left)) return isBrowserDirectory(right) ? 1 : -1;
             return left.getName().compareToIgnoreCase(right.getName());
         });
-        for (File entry : entries) {
-            boolean directory = entry.isDirectory();
-            String detail = directory ? "FOLDER" : readableFileSize(entry.length());
+        for (File entry : browserEntries) {
+            boolean directory = isBrowserDirectory(entry);
+            String detail = directory ? "FOLDER" : (entry.canRead() ? readableFileSize(entry.length()) : "FILE");
             addFileRow((directory ? "▰  " : "▤  ") + entry.getName(), detail, directory, () -> {
                 if (directory) {
                     mCurrentFileDirectory = entry;
+                    mRootBrowserEntries = null;
                     refreshFileList();
                 } else {
                     showFileActions(entry);
@@ -924,6 +957,101 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             });
         }
         if (mFileList.getChildCount() == 0) addEmptyState(mFileList, "Nothing here yet", "Files you create in $HOME will show up here.");
+    }
+
+    private boolean isBrowserDirectory(File file) {
+        return file.isDirectory() || mRootListedDirectories.contains(file.getAbsolutePath());
+    }
+
+    private boolean isInsideChrootHome(String path) {
+        return path.equals(CHROOT_CODER_HOME) || path.startsWith(CHROOT_CODER_HOME + File.separator);
+    }
+
+    private void loadChrootDirectoryWithRoot() {
+        final String path = mCurrentFileDirectory.getAbsolutePath();
+        mFileList.removeAllViews();
+        addEmptyState(mFileList, "Waiting for root access", "Approve DevBox in your root manager to read this folder.");
+        new Thread(() -> {
+            try {
+                String output = runRootCommand("ls -Ap " + shellQuote(path));
+                ArrayList<File> entries = new ArrayList<>();
+                Set<String> directories = new HashSet<>();
+                for (String item : output.split("\\n")) {
+                    if (item.isEmpty() || item.equals("./") || item.equals("../")) continue;
+                    boolean directory = item.endsWith("/");
+                    String name = directory ? item.substring(0, item.length() - 1) : item;
+                    File child = new File(path, name);
+                    entries.add(child);
+                    if (directory) directories.add(child.getAbsolutePath());
+                }
+                runOnUiThread(() -> {
+                    mRootBrowserPath = path;
+                    mRootBrowserEntries = entries;
+                    mRootListedDirectories.clear();
+                    mRootListedDirectories.addAll(directories);
+                    refreshFileList();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    mFileList.removeAllViews();
+                    addEmptyState(mFileList, "Root access unavailable", "Grant root access, then open Chroot home again.");
+                });
+            }
+        }, "devbox-root-file-list").start();
+    }
+
+    private String runRootCommand(String command) throws IOException, InterruptedException {
+        Process process = new ProcessBuilder("su", "-c", command).redirectErrorStream(true).start();
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        try (InputStream input = process.getInputStream()) {
+            int count;
+            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+        }
+        if (process.waitFor() != 0) throw new IOException("Root command failed");
+        return output.toString("UTF-8");
+    }
+
+    private static boolean isFontFile(File file) {
+        String name = file.getName().toLowerCase(java.util.Locale.ROOT);
+        return name.endsWith(".ttf") || name.endsWith(".otf");
+    }
+
+    private void installTerminalFontFromFile(File source) {
+        new Thread(() -> {
+            File destination = TermuxConstants.TERMUX_FONT_FILE;
+            File temporary = new File(destination.getParentFile(), "font.ttf.new");
+            Process rootProcess = null;
+            try {
+                File parent = destination.getParentFile();
+                if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new IOException("Could not create font folder");
+                InputStream input;
+                try {
+                    input = new FileInputStream(source);
+                } catch (IOException inaccessible) {
+                    rootProcess = new ProcessBuilder("su", "-c", "cat " + shellQuote(source.getAbsolutePath())).start();
+                    input = rootProcess.getInputStream();
+                }
+                try (InputStream in = input; OutputStream out = new FileOutputStream(temporary)) {
+                    byte[] buffer = new byte[8192];
+                    int count;
+                    while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
+                }
+                if (rootProcess != null && rootProcess.waitFor() != 0) throw new IOException("Root could not read font");
+                Typeface.createFromFile(temporary);
+                if (!temporary.renameTo(destination)) throw new IOException("Could not activate font");
+                runOnUiThread(() -> {
+                    mTerminalView.setTypeface(Typeface.createFromFile(destination));
+                    getSharedPreferences(DEVBOX_UI_PREFERENCES, MODE_PRIVATE).edit().putInt(KEY_TERMINAL_FONT, -1).apply();
+                    updateTerminalFontSelection(-1);
+                    showToast("Custom terminal font applied", false);
+                    selectAppScreen(SCREEN_TERMINAL);
+                });
+            } catch (Exception e) {
+                temporary.delete();
+                runOnUiThread(() -> showToast("Couldn't read this font. Check root access and use a valid TTF/OTF.", true));
+            }
+        }, "devbox-font-import").start();
     }
 
     private void addFileRow(String title, String detail, boolean directory, Runnable action) {
@@ -942,17 +1070,20 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void showFileActions(File file) {
-        new AlertDialog.Builder(this)
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this)
             .setTitle(file.getName())
-            .setMessage(file.getAbsolutePath() + "\n\n" + readableFileSize(file.length()))
-            .setNeutralButton("Copy path", (dialog, which) -> {
+            .setMessage(file.getAbsolutePath() + "\n\n" + (file.canRead() ? readableFileSize(file.length()) : "File in chroot"))
+            .setNeutralButton("Copy path", (d, which) -> {
                 android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText("File path", file.getAbsolutePath()));
                 showToast("Path copied", false);
             })
-            .setPositiveButton("Open in terminal", (dialog, which) -> runCommand("less " + shellQuote(file.getAbsolutePath())))
-            .setNegativeButton(android.R.string.cancel, null)
-            .show();
+            .setPositiveButton(isFontFile(file) ? "Use terminal font" : "Open in terminal", (d, which) -> {
+                if (isFontFile(file)) installTerminalFontFromFile(file);
+                else runCommand("less " + shellQuote(file.getAbsolutePath()));
+            })
+            .setNegativeButton(android.R.string.cancel, null);
+        dialog.show();
     }
 
     private void buildToolsPage() {
@@ -1037,6 +1168,19 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         addTerminalPresetOption("Roomy", 2);
         card.addView(mTerminalPresetOptions, pageLayout());
 
+        addText(card, "TERMINAL TYPEFACE", 10, true, R.color.neon_violet_soft, 0, 8);
+        mTerminalFontOptions = new LinearLayout(this);
+        mTerminalFontOptions.setOrientation(LinearLayout.VERTICAL);
+        addTerminalFontOption("JetBrains Mono", "Balanced and easy to scan", 0, "fonts/JetBrainsMono.ttf");
+        addTerminalFontOption("Roboto Mono", "Familiar shapes with clear spacing", 1, "fonts/RobotoMono.ttf");
+        addTerminalFontOption("Fira Code", "Distinct punctuation for coding", 2, "fonts/FiraCode.ttf");
+        card.addView(mTerminalFontOptions, pageLayout());
+        addPillButton(card, "Add font from Chroot home", () -> {
+            mCurrentFileDirectory = new File(CHROOT_CODER_HOME);
+            mRootBrowserEntries = null;
+            selectAppScreen(SCREEN_FILES);
+        });
+
         LinearLayout fontHeader = new LinearLayout(this);
         fontHeader.setGravity(Gravity.CENTER_VERTICAL);
         fontHeader.setOrientation(LinearLayout.HORIZONTAL);
@@ -1080,6 +1224,57 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         });
         mTerminalFontSizeLabel.setText(fontDp + " dp");
         updateTerminalPresetSelection(mTerminalCanvasPreset);
+        updateTerminalFontSelection(getSharedPreferences(DEVBOX_UI_PREFERENCES, MODE_PRIVATE).getInt(KEY_TERMINAL_FONT, -1));
+    }
+
+    private void addTerminalFontOption(String title, String subtitle, int id, String assetPath) {
+        LinearLayout option = premiumCard(false);
+        option.setOrientation(LinearLayout.VERTICAL);
+        addText(option, title, 13, true, R.color.glass_text_primary, 0, 3).setTypeface(
+            Typeface.createFromAsset(getAssets(), assetPath));
+        addText(option, subtitle, 10, false, R.color.glass_text_secondary, 0, 0);
+        option.setTag(id);
+        option.setOnClickListener(v -> installBundledTerminalFont(assetPath, id));
+        mTerminalFontOptions.addView(option, pageLayout());
+    }
+
+    private void installBundledTerminalFont(String assetPath, int id) {
+        File destination = TermuxConstants.TERMUX_FONT_FILE;
+        File temporary = new File(destination.getParentFile(), "font.ttf.new");
+        try {
+            File parent = destination.getParentFile();
+            if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new IOException("Could not create font folder");
+            try (InputStream input = getAssets().open(assetPath); OutputStream output = new FileOutputStream(temporary)) {
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+            }
+            Typeface typeface = Typeface.createFromFile(temporary);
+            if (!temporary.renameTo(destination)) throw new IOException("Could not activate font");
+            mTerminalView.setTypeface(typeface);
+            getSharedPreferences(DEVBOX_UI_PREFERENCES, MODE_PRIVATE).edit().putInt(KEY_TERMINAL_FONT, id).apply();
+            updateTerminalFontSelection(id);
+            showToast("" + getFontName(id) + " applied", false);
+        } catch (Exception e) {
+            temporary.delete();
+            showToast("Couldn't apply this font", true);
+        }
+    }
+
+    private String getFontName(int id) {
+        if (id == 0) return "JetBrains Mono";
+        if (id == 1) return "Roboto Mono";
+        if (id == 2) return "Fira Code";
+        return "Custom font";
+    }
+
+    private void updateTerminalFontSelection(int selectedId) {
+        if (mTerminalFontOptions == null) return;
+        for (int i = 0; i < mTerminalFontOptions.getChildCount(); i++) {
+            View option = mTerminalFontOptions.getChildAt(i);
+            boolean selected = ((Integer) option.getTag()) == selectedId;
+            option.setBackgroundResource(selected ? R.drawable.bg_action_pill : R.drawable.bg_premium_card);
+        }
     }
 
     private void addTerminalPresetOption(String label, int index) {
@@ -1260,7 +1455,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mSessionsDialog != null && mSessionsDialog.isShowing()) {
             closeSessionsPanel();
         } else if (mSelectedScreen == SCREEN_FILES && mCurrentFileDirectory != null &&
-            !mCurrentFileDirectory.equals(new File(TermuxConstants.TERMUX_HOME_DIR_PATH))) {
+            !mCurrentFileDirectory.equals(new File(TermuxConstants.TERMUX_HOME_DIR_PATH)) &&
+            !mCurrentFileDirectory.equals(new File(CHROOT_CODER_HOME))) {
             File parent = mCurrentFileDirectory.getParentFile();
             if (parent != null) mCurrentFileDirectory = parent;
             refreshFileList();

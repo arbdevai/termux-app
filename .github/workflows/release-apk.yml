@@ -17,7 +17,7 @@ jobs:
     env:
       TERMUX_PACKAGE_VARIANT: apt-android-7
       TERMUX_APP_VERSION_NAME: 0.118.0+${{ github.sha }}
-      TERMUX_APP_VERSION_CODE: 125
+      TERMUX_APP_VERSION_CODE: 126
       TERMUX_APK_VERSION_TAG: ${{ github.sha }}-android14-arm64-release
       RELEASE_KEYSTORE_PATH: ${{ github.workspace }}/app/testkey_untrusted.jks
       RELEASE_KEYSTORE_PASSWORD: xrj45yWGLbsO7W0v
