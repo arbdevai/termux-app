@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -21,10 +22,12 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.RelativeLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -60,15 +63,19 @@ import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalSessionClient;
 import com.termux.view.TerminalView;
 import com.termux.view.TerminalViewClient;
+import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.viewpager.widget.ViewPager;
 
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.io.File;
 
 /**
  * A terminal emulator activity.
@@ -81,6 +88,22 @@ import java.util.Arrays;
  * about memory leaks.
  */
 public final class TermuxActivity extends AppCompatActivity implements ServiceConnection {
+
+    private static final int SCREEN_WORKSPACE = 0;
+    private static final int SCREEN_TERMINAL = 1;
+    private static final int SCREEN_FILES = 2;
+    private static final int SCREEN_TOOLS = 3;
+    private static final int SCREEN_SETTINGS = 4;
+    private int mSelectedScreen = SCREEN_WORKSPACE;
+    private File mCurrentFileDirectory;
+    private LinearLayout mWorkspaceContent;
+    private LinearLayout mFilesContent;
+    private LinearLayout mToolsContent;
+    private LinearLayout mSettingsContent;
+    private TextView mWorkspaceSessionSummary;
+    private TextView mFilesPathLabel;
+    private LinearLayout mFileList;
+    private final ArrayList<View> mNavigationItems = new ArrayList<>();
 
     /**
      * The connection to the {@link TermuxService}. Requested in {@link #onCreate(Bundle)} with a call to
@@ -197,6 +220,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
+    private static final String ARG_SELECTED_APP_SCREEN = "selected_app_screen";
+    private static final String ARG_FILE_BROWSER_PATH = "file_browser_path";
 
     private static final String LOG_TAG = "TermuxActivity";
 
@@ -235,7 +260,19 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         mTermuxActivityRootView = findViewById(R.id.activity_termux_root_view);
         mTermuxActivityRootView.setActivity(this);
         mTermuxActivityBottomSpaceView = findViewById(R.id.activity_termux_bottom_space_view);
-        mTermuxActivityRootView.setOnApplyWindowInsetsListener(new TermuxActivityRootView.WindowInsetsListener());
+        mTermuxActivityRootView.setOnApplyWindowInsetsListener(new TermuxActivityRootView.WindowInsetsListener() {
+            @Override
+            public android.view.WindowInsets onApplyWindowInsets(View view, android.view.WindowInsets insets) {
+                android.view.WindowInsets result = super.onApplyWindowInsets(view, insets);
+                View navigation = findViewById(R.id.app_navigation);
+                if (navigation != null) {
+                    boolean keyboardVisible = WindowInsetsCompat.toWindowInsetsCompat(insets)
+                        .isVisible(WindowInsetsCompat.Type.ime());
+                    navigation.setVisibility(mSelectedScreen == SCREEN_TERMINAL && keyboardVisible ? View.GONE : View.VISIBLE);
+                }
+                return result;
+            }
+        });
 
         View content = findViewById(android.R.id.content);
         content.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -252,6 +289,17 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setTerminalToolbarView(savedInstanceState);
 
         setBottomBarView();
+        setupPremiumShell();
+
+        Intent launchIntent = getIntent();
+        if (savedInstanceState != null) {
+            mCurrentFileDirectory = new File(savedInstanceState.getString(ARG_FILE_BROWSER_PATH,
+                TermuxConstants.TERMUX_HOME_DIR_PATH));
+            selectAppScreen(savedInstanceState.getInt(ARG_SELECTED_APP_SCREEN, SCREEN_WORKSPACE));
+        } else if (launchIntent != null && (Intent.ACTION_RUN.equals(launchIntent.getAction()) ||
+            launchIntent.getBooleanExtra(TERMUX_ACTIVITY.EXTRA_FAILSAFE_SESSION, false))) {
+            selectAppScreen(SCREEN_TERMINAL);
+        }
 
         registerForContextMenu(mTerminalView);
 
@@ -374,6 +422,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         super.onSaveInstanceState(savedInstanceState);
         saveTerminalToolbarTextInput(savedInstanceState);
         savedInstanceState.putBoolean(ARG_ACTIVITY_RECREATED, true);
+        savedInstanceState.putInt(ARG_SELECTED_APP_SCREEN, mSelectedScreen);
+        savedInstanceState.putString(ARG_FILE_BROWSER_PATH, mCurrentFileDirectory == null ?
+            TermuxConstants.TERMUX_HOME_DIR_PATH : mCurrentFileDirectory.getAbsolutePath());
     }
 
 
@@ -429,6 +480,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         // Update the {@link TerminalSession} and {@link TerminalEmulator} clients.
         mTermuxService.setTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
+        refreshPremiumShell();
     }
 
     @Override
@@ -601,8 +653,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 return true;
             });
         newSessionAction.findViewById(R.id.action_icon).setBackgroundResource(R.drawable.bg_glass_icon_button);
-        addBottomBarAction(bar, R.drawable.ic_settings, R.string.action_open_settings,
-            v -> ActivityUtils.startActivity(this, new Intent(this, SettingsActivity.class)), null);
+        addBottomBarAction(bar, R.drawable.ic_terminal_more, R.string.action_more,
+            v -> mTerminalView.showContextMenu(), null);
     }
 
     private View addBottomBarAction(LinearLayout bar, int icon, int label, View.OnClickListener click,
@@ -619,6 +671,442 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         return action;
     }
 
+    private void setupPremiumShell() {
+        mWorkspaceContent = createPageContent(findViewById(R.id.workspace_screen));
+        mFilesContent = createPageContent(findViewById(R.id.files_screen));
+        mToolsContent = createPageContent(findViewById(R.id.tools_screen));
+        mSettingsContent = createPageContent(findViewById(R.id.app_settings_screen));
+        mCurrentFileDirectory = new File(TermuxConstants.TERMUX_HOME_DIR_PATH);
+
+        buildWorkspacePage();
+        buildFilesPage();
+        buildToolsPage();
+        buildSettingsPage();
+
+        LinearLayout navigation = findViewById(R.id.app_navigation);
+        addNavigationItem(navigation, "Home", R.drawable.ic_nav_workspace, SCREEN_WORKSPACE);
+        addNavigationItem(navigation, "Terminal", R.drawable.ic_nav_terminal, SCREEN_TERMINAL);
+        addNavigationItem(navigation, "Files", R.drawable.ic_nav_files, SCREEN_FILES);
+        addNavigationItem(navigation, "Tools", R.drawable.ic_nav_tools, SCREEN_TOOLS);
+        addNavigationItem(navigation, "Settings", R.drawable.ic_nav_settings, SCREEN_SETTINGS);
+        findViewById(R.id.terminal_session_button).setOnClickListener(v -> openSessionsPanel());
+        selectAppScreen(SCREEN_WORKSPACE);
+    }
+
+    private LinearLayout createPageContent(FrameLayout host) {
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setFillViewport(true);
+        scrollView.setClipToPadding(false);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(20), dp(20), dp(20), dp(24));
+        scrollView.addView(content, new ScrollView.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        host.addView(scrollView, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        return content;
+    }
+
+    private void addNavigationItem(LinearLayout navigation, String label, int icon, int screen) {
+        LinearLayout item = new LinearLayout(this);
+        item.setOrientation(LinearLayout.VERTICAL);
+        item.setGravity(Gravity.CENTER);
+        item.setBackgroundResource(R.drawable.bg_nav_item_selected);
+        item.setPadding(dp(2), dp(7), dp(2), dp(5));
+        ImageView image = new ImageView(this);
+        image.setImageResource(icon);
+        image.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        LinearLayout.LayoutParams imageParams = new LinearLayout.LayoutParams(dp(21), dp(21));
+        item.addView(image, imageParams);
+        TextView title = premiumText(label, 9, true, R.color.glass_text_secondary);
+        title.setGravity(Gravity.CENTER);
+        title.setSingleLine(true);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleParams.topMargin = dp(3);
+        item.addView(title, titleParams);
+        item.setTag(new View[]{image, title});
+        item.setContentDescription(label);
+        item.setOnClickListener(v -> selectAppScreen(screen));
+        LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(0, dp(54), 1f);
+        itemParams.setMargins(dp(2), 0, dp(2), 0);
+        navigation.addView(item, itemParams);
+        mNavigationItems.add(item);
+    }
+
+    private void selectAppScreen(int screen) {
+        int previousScreen = mSelectedScreen;
+        mSelectedScreen = screen;
+        int[] screenIds = {R.id.workspace_screen, R.id.terminal_screen, R.id.files_screen,
+            R.id.tools_screen, R.id.app_settings_screen};
+        for (int i = 0; i < screenIds.length; i++) {
+            View page = findViewById(screenIds[i]);
+            if (page != null) page.setVisibility(i == screen ? View.VISIBLE : View.GONE);
+        }
+        for (int i = 0; i < mNavigationItems.size(); i++) {
+            View item = mNavigationItems.get(i);
+            View[] parts = (View[]) item.getTag();
+            boolean selected = i == screen;
+            item.setBackgroundResource(selected ? R.drawable.bg_nav_item_selected : android.R.color.transparent);
+            ((ImageView) parts[0]).setColorFilter(getColor(selected ? R.color.neon_violet_soft : R.color.glass_text_secondary));
+            ((TextView) parts[1]).setTextColor(getColor(selected ? R.color.glass_text_primary : R.color.glass_text_secondary));
+        }
+        if (screen == SCREEN_FILES) refreshFileList();
+        if (screen == SCREEN_WORKSPACE) refreshPremiumShell();
+        if (screen == SCREEN_TERMINAL && mTerminalViewClientReady()) mTermuxTerminalViewClient.onTerminalScreenSelected();
+        else if (previousScreen == SCREEN_TERMINAL && mTermuxTerminalViewClientReady()) mTermuxTerminalViewClient.onTerminalScreenHidden();
+    }
+
+    private boolean mTerminalViewClientReady() {
+        return mTermuxTerminalViewClient != null && mTerminalView != null;
+    }
+
+    public boolean isTerminalScreenSelected() {
+        return mSelectedScreen == SCREEN_TERMINAL;
+    }
+
+    private void buildWorkspacePage() {
+        mWorkspaceContent.removeAllViews();
+        addPageHeader(mWorkspaceContent, "DEVBOX  /  LOCAL WORKSPACE", "Your space,\nyour commands.",
+            "A focused home for the work happening on your device.");
+
+        LinearLayout hero = premiumCard(true);
+        addText(hero, "WORKSPACE STATUS", 10, true, R.color.neon_violet_soft, 0, 2);
+        addText(hero, "Ready when you are.", 21, true, R.color.glass_text_primary, 0, 5);
+        mWorkspaceSessionSummary = addText(hero, "Starting terminal service…", 13, false,
+            R.color.glass_text_secondary, 0, 16);
+        addPillButton(hero, "Open terminal", () -> selectAppScreen(SCREEN_TERMINAL));
+        mWorkspaceContent.addView(hero, pageLayout());
+
+        addSectionTitle(mWorkspaceContent, "Quick access", "Pick up a common task.");
+        LinearLayout quickRow = new LinearLayout(this);
+        quickRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout newSession = miniCard("＋", "New session", "Fresh shell", () -> {
+            mTermuxTerminalSessionActivityClient.addNewSession(false, null);
+            selectAppScreen(SCREEN_TERMINAL);
+        });
+        LinearLayout files = miniCard("⌘", "Browse files", "Your home folder", () -> selectAppScreen(SCREEN_FILES));
+        LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, dp(118), 1f);
+        half.setMargins(0, 0, dp(6), 0);
+        quickRow.addView(newSession, half);
+        LinearLayout.LayoutParams halfRight = new LinearLayout.LayoutParams(0, dp(118), 1f);
+        halfRight.setMargins(dp(6), 0, 0, 0);
+        quickRow.addView(files, halfRight);
+        mWorkspaceContent.addView(quickRow, pageLayout());
+
+        addSectionTitle(mWorkspaceContent, "Recent sessions", "Jump back into an active shell.");
+        LinearLayout recent = new LinearLayout(this);
+        recent.setOrientation(LinearLayout.VERTICAL);
+        recent.setTag("recent_sessions");
+        mWorkspaceContent.addView(recent, pageLayout());
+        refreshPremiumShell();
+    }
+
+    public void refreshPremiumShell() {
+        if (mWorkspaceSessionSummary == null || mTermuxService == null) return;
+        int count = mTermuxService.getTermuxSessionsSize();
+        mWorkspaceSessionSummary.setText(count == 0 ? "No active sessions yet. Start a terminal to begin."
+            : count + (count == 1 ? " active session is ready." : " active sessions are ready."));
+        TextView terminalTitle = findViewById(R.id.terminal_session_title);
+        TextView terminalSessionButton = findViewById(R.id.terminal_session_button);
+        TerminalSession current = getCurrentSession();
+        String currentTitle = current == null ? "Local shell" : current.mSessionName;
+        if (currentTitle == null || currentTitle.trim().isEmpty()) currentTitle = current == null ? "Local shell" : current.getTitle();
+        if (currentTitle == null || currentTitle.trim().isEmpty()) currentTitle = "Local shell";
+        terminalTitle.setText(currentTitle);
+        int currentIndex = mTermuxService.getIndexOfSession(current);
+        terminalSessionButton.setText(String.format(java.util.Locale.US, "%02d / %02d  ˅",
+            Math.max(0, currentIndex + 1), Math.max(0, count)));
+        LinearLayout recent = mWorkspaceContent == null ? null : (LinearLayout) mWorkspaceContent.findViewWithTag("recent_sessions");
+        if (recent == null) return;
+        recent.removeAllViews();
+        for (TermuxSession termuxSession : mTermuxService.getTermuxSessions()) {
+            TerminalSession session = termuxSession.getTerminalSession();
+            if (session == null) continue;
+            String name = session.mSessionName;
+            if (name == null || name.trim().isEmpty()) name = session.getTitle();
+            if (name == null || name.trim().isEmpty()) name = "Terminal session";
+            String sessionName = name;
+            LinearLayout row = premiumCard(false);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            TextView mark = premiumText("›_", 18, true, R.color.neon_violet_soft);
+            mark.setGravity(Gravity.CENTER);
+            row.addView(mark, new LinearLayout.LayoutParams(dp(42), dp(42)));
+            LinearLayout detail = new LinearLayout(this);
+            detail.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            detailParams.leftMargin = dp(10);
+            row.addView(detail, detailParams);
+            addText(detail, sessionName, 14, true, R.color.glass_text_primary, 0, 3);
+            addText(detail, session.isRunning() ? "RUNNING  ·  tap to resume" : "STOPPED  ·  tap to inspect",
+                10, false, R.color.glass_text_secondary, 0, 0);
+            row.setOnClickListener(v -> {
+                mTermuxTerminalSessionActivityClient.setCurrentSession(session);
+                selectAppScreen(SCREEN_TERMINAL);
+            });
+            recent.addView(row, pageLayout());
+        }
+        if (count == 0) addEmptyState(recent, "No sessions yet", "Create a shell and it will appear here.");
+    }
+
+    private void buildFilesPage() {
+        mFilesContent.removeAllViews();
+        addPageHeader(mFilesContent, "FILE SYSTEM", "Everything\nin its place.",
+            "Browse your Termux home and shared storage.");
+        LinearLayout locations = new LinearLayout(this);
+        locations.setOrientation(LinearLayout.HORIZONTAL);
+        addPillButton(locations, "Home", () -> {
+            mCurrentFileDirectory = new File(TermuxConstants.TERMUX_HOME_DIR_PATH);
+            refreshFileList();
+        });
+        addPillButton(locations, "Shared storage", () -> {
+            mCurrentFileDirectory = new File(TermuxConstants.TERMUX_STORAGE_HOME_DIR_PATH, "shared");
+            refreshFileList();
+        });
+        mFilesContent.addView(locations, pageLayout());
+
+        LinearLayout pathCard = premiumCard(false);
+        addText(pathCard, "CURRENT LOCATION", 10, true, R.color.neon_violet_soft, 0, 5);
+        mFilesPathLabel = addText(pathCard, "", 12, false, R.color.glass_text_secondary, 0, 0);
+        mFilesPathLabel.setMaxLines(2);
+        mFilesPathLabel.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+        mFilesContent.addView(pathCard, pageLayout());
+        mFileList = new LinearLayout(this);
+        mFileList.setOrientation(LinearLayout.VERTICAL);
+        mFilesContent.addView(mFileList, pageLayout());
+        refreshFileList();
+    }
+
+    private void refreshFileList() {
+        if (mFileList == null || mCurrentFileDirectory == null) return;
+        mFilesPathLabel.setText(mCurrentFileDirectory.getAbsolutePath());
+        mFileList.removeAllViews();
+        if (!mCurrentFileDirectory.equals(new File(TermuxConstants.TERMUX_HOME_DIR_PATH))) {
+            addFileRow("‹  Parent folder", "Go up one level", true, () -> {
+                File parent = mCurrentFileDirectory.getParentFile();
+                if (parent != null) mCurrentFileDirectory = parent;
+                refreshFileList();
+            });
+        }
+        File[] entries = mCurrentFileDirectory.listFiles();
+        if (entries == null) {
+            addEmptyState(mFileList, "Folder unavailable", "This location is not mounted or cannot be read.");
+            return;
+        }
+        Arrays.sort(entries, (left, right) -> {
+            if (left.isDirectory() != right.isDirectory()) return left.isDirectory() ? -1 : 1;
+            return left.getName().compareToIgnoreCase(right.getName());
+        });
+        for (File entry : entries) {
+            boolean directory = entry.isDirectory();
+            String detail = directory ? "FOLDER" : readableFileSize(entry.length());
+            addFileRow((directory ? "▰  " : "▤  ") + entry.getName(), detail, directory, () -> {
+                if (directory) {
+                    mCurrentFileDirectory = entry;
+                    refreshFileList();
+                } else {
+                    showFileActions(entry);
+                }
+            });
+        }
+        if (mFileList.getChildCount() == 0) addEmptyState(mFileList, "Nothing here yet", "Files you create in $HOME will show up here.");
+    }
+
+    private void addFileRow(String title, String detail, boolean directory, Runnable action) {
+        LinearLayout row = premiumCard(false);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        row.addView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        addText(text, title, 13, true, R.color.glass_text_primary, 0, 4);
+        addText(text, detail, 10, false, R.color.glass_text_secondary, 0, 0);
+        TextView arrow = premiumText(directory ? "›" : "⋯", 21, false, R.color.neon_violet_soft);
+        row.addView(arrow, new LinearLayout.LayoutParams(dp(30), ViewGroup.LayoutParams.WRAP_CONTENT));
+        row.setOnClickListener(v -> action.run());
+        mFileList.addView(row, pageLayout());
+    }
+
+    private void showFileActions(File file) {
+        new AlertDialog.Builder(this)
+            .setTitle(file.getName())
+            .setMessage(file.getAbsolutePath() + "\n\n" + readableFileSize(file.length()))
+            .setNeutralButton("Copy path", (dialog, which) -> {
+                android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("File path", file.getAbsolutePath()));
+                showToast("Path copied", false);
+            })
+            .setPositiveButton("Open in terminal", (dialog, which) -> runCommand("less " + shellQuote(file.getAbsolutePath())))
+            .setNegativeButton(android.R.string.cancel, null)
+            .show();
+    }
+
+    private void buildToolsPage() {
+        mToolsContent.removeAllViews();
+        addPageHeader(mToolsContent, "COMMAND DECK", "Useful tools.\nOne tap away.",
+            "Choose a command and review it before it runs in your shell.");
+        addCommandCard(mToolsContent, "Package manager", "Refresh package lists", "pkg update");
+        addCommandCard(mToolsContent, "Storage access", "Connect Android shared storage", "termux-setup-storage");
+        addCommandCard(mToolsContent, "Device status", "Read battery details via Termux:API", "termux-battery-status");
+        addCommandCard(mToolsContent, "Text editor", "Install the lightweight Micro editor", "pkg install micro");
+        addText(mToolsContent, "Commands run in your current terminal session after confirmation.",
+            11, false, R.color.glass_text_secondary, dp(2), dp(10));
+    }
+
+    private void addCommandCard(LinearLayout parent, String title, String subtitle, String command) {
+        LinearLayout card = premiumCard(false);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout detail = new LinearLayout(this);
+        detail.setOrientation(LinearLayout.VERTICAL);
+        card.addView(detail, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        addText(detail, title, 14, true, R.color.glass_text_primary, 0, 4);
+        addText(detail, subtitle, 11, false, R.color.glass_text_secondary, 0, 6);
+        TextView code = addText(detail, command, 11, false, R.color.neon_violet_soft, 0, 0);
+        code.setTypeface(Typeface.MONOSPACE);
+        TextView run = premiumText("RUN  ›", 10, true, R.color.neon_violet_soft);
+        card.addView(run, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        card.setOnClickListener(v -> new AlertDialog.Builder(this)
+            .setTitle("Run command?")
+            .setMessage(command + "\n\nThis will be entered in your current shell.")
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton("Run", (dialog, which) -> runCommand(command))
+            .show());
+        parent.addView(card, pageLayout());
+    }
+
+    private void runCommand(String command) {
+        if (mTermuxService == null) {
+            showToast("Terminal is still starting", false);
+            return;
+        }
+        if (getCurrentSession() == null) mTermuxTerminalSessionActivityClient.addNewSession(false, null);
+        selectAppScreen(SCREEN_TERMINAL);
+        if (mTerminalView != null && mTerminalView.mEmulator != null) {
+            mTerminalView.mEmulator.paste(command + "\n");
+        } else {
+            showToast("No active terminal session", false);
+        }
+    }
+
+    private void buildSettingsPage() {
+        mSettingsContent.removeAllViews();
+        addPageHeader(mSettingsContent, "PERSONALIZE", "Make it yours.",
+            "Tune the terminal around how you work.");
+        LinearLayout appearance = premiumCard(true);
+        addText(appearance, "TERMINAL EXPERIENCE", 10, true, R.color.neon_violet_soft, 0, 6);
+        addText(appearance, "Keyboard, colors, font, and behavior", 16, true, R.color.glass_text_primary, 0, 6);
+        addText(appearance, "Your existing Termux configuration stays in control.",
+            11, false, R.color.glass_text_secondary, 0, 14);
+        addPillButton(appearance, "Open preferences", () -> ActivityUtils.startActivity(this,
+            new Intent(this, SettingsActivity.class)));
+        mSettingsContent.addView(appearance, pageLayout());
+
+        addSectionTitle(mSettingsContent, "App", "Support and information.");
+        addSettingsLink(mSettingsContent, "Help & keyboard shortcuts", "Learn the controls", () ->
+            ActivityUtils.startActivity(this, new Intent(this, HelpActivity.class)));
+        addSettingsLink(mSettingsContent, "More preferences", "Additional app and integration controls", () ->
+            ActivityUtils.startActivity(this, new Intent(this, SettingsActivity.class)));
+    }
+
+    private void addSettingsLink(LinearLayout parent, String title, String subtitle, Runnable action) {
+        LinearLayout card = premiumCard(false);
+        addText(card, title, 14, true, R.color.glass_text_primary, 0, 4);
+        addText(card, subtitle, 11, false, R.color.glass_text_secondary, 0, 0);
+        card.setOnClickListener(v -> action.run());
+        parent.addView(card, pageLayout());
+    }
+
+    private void addPageHeader(LinearLayout parent, String kicker, String title, String subtitle) {
+        addText(parent, kicker, 10, true, R.color.neon_violet_soft, 0, 10);
+        TextView heading = addText(parent, title, 30, true, R.color.glass_text_primary, 0, 8);
+        heading.setLineSpacing(dp(1), 1f);
+        addText(parent, subtitle, 13, false, R.color.glass_text_secondary, 0, 20);
+    }
+
+    private void addSectionTitle(LinearLayout parent, String title, String subtitle) {
+        addText(parent, title, 18, true, R.color.glass_text_primary, dp(2), 4);
+        addText(parent, subtitle, 11, false, R.color.glass_text_secondary, 0, 12);
+    }
+
+    private LinearLayout miniCard(String symbol, String title, String detail, Runnable action) {
+        LinearLayout card = premiumCard(false);
+        addText(card, symbol, 20, true, R.color.neon_violet_soft, 0, 8);
+        addText(card, title, 13, true, R.color.glass_text_primary, 0, 4);
+        addText(card, detail, 10, false, R.color.glass_text_secondary, 0, 0);
+        card.setOnClickListener(v -> action.run());
+        return card;
+    }
+
+    private LinearLayout premiumCard(boolean active) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(16), dp(15), dp(16), dp(15));
+        card.setBackgroundResource(active ? R.drawable.bg_premium_card_active : R.drawable.bg_premium_card);
+        card.setElevation(dp(2));
+        return card;
+    }
+
+    private TextView addText(LinearLayout parent, String value, int size, boolean bold, int color, int top, int bottom) {
+        TextView text = premiumText(value, size, bold, color);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = top;
+        params.bottomMargin = bottom;
+        parent.addView(text, params);
+        return text;
+    }
+
+    private TextView premiumText(String value, int size, boolean bold, int color) {
+        TextView text = new TextView(this);
+        text.setText(value);
+        text.setTextSize(size);
+        text.setTextColor(getColor(color));
+        text.setIncludeFontPadding(false);
+        text.setTypeface(Typeface.create("sans-serif", bold ? Typeface.BOLD : Typeface.NORMAL));
+        return text;
+    }
+
+    private void addPillButton(LinearLayout parent, String label, Runnable action) {
+        TextView button = premiumText(label + "  →", 12, true, R.color.glass_text_primary);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding(dp(15), dp(12), dp(15), dp(12));
+        button.setBackgroundResource(R.drawable.bg_action_pill);
+        button.setOnClickListener(v -> action.run());
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        parent.addView(button, params);
+    }
+
+    private void addEmptyState(LinearLayout parent, String title, String subtitle) {
+        LinearLayout card = premiumCard(false);
+        addText(card, title, 14, true, R.color.glass_text_primary, 0, 5);
+        addText(card, subtitle, 11, false, R.color.glass_text_secondary, 0, 0);
+        parent.addView(card, pageLayout());
+    }
+
+    private LinearLayout.LayoutParams pageLayout() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.bottomMargin = dp(12);
+        return params;
+    }
+
+    private int dp(float value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private String readableFileSize(long size) {
+        if (size < 1024) return size + " B";
+        if (size < 1024 * 1024) return String.format(java.util.Locale.US, "%.1f KB", size / 1024f);
+        return String.format(java.util.Locale.US, "%.1f MB", size / (1024f * 1024f));
+    }
+
+    private String shellQuote(String value) {
+        return "'" + value.replace("'", "'\\''") + "'";
+    }
+
     public void openSessionsPanel() {
         if (mSessionsDialog == null) return;
         updateSessionCount();
@@ -633,6 +1121,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mSessionCountView == null || mTermuxService == null) return;
         int count = mTermuxService.getTermuxSessionsSize();
         mSessionCountView.setText(getResources().getQuantityString(R.plurals.label_active_sessions, count, count));
+        refreshPremiumShell();
     }
 
 
@@ -644,6 +1133,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     public void onBackPressed() {
         if (mSessionsDialog != null && mSessionsDialog.isShowing()) {
             closeSessionsPanel();
+        } else if (mSelectedScreen == SCREEN_FILES && mCurrentFileDirectory != null &&
+            !mCurrentFileDirectory.equals(new File(TermuxConstants.TERMUX_HOME_DIR_PATH))) {
+            File parent = mCurrentFileDirectory.getParentFile();
+            if (parent != null) mCurrentFileDirectory = parent;
+            refreshFileList();
+        } else if (mSelectedScreen != SCREEN_WORKSPACE) {
+            selectAppScreen(SCREEN_WORKSPACE);
         } else {
             finishActivityIfNotFinishing();
         }

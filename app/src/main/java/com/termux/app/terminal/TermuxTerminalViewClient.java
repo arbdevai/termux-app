@@ -108,8 +108,12 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
      * Should be called when mActivity.onResume() is called
      */
     public void onResume() {
-        // Show the soft keyboard if required
-        setSoftKeyboardState(true, mActivity.isActivityRecreated());
+        // The workspace opens as the landing screen. Only reveal the IME when the terminal screen is active.
+        if (mActivity.isTerminalScreenSelected()) {
+            setSoftKeyboardState(true, mActivity.isActivityRecreated());
+        } else {
+            KeyboardUtils.hideSoftKeyboard(mActivity, mActivity.getTerminalView());
+        }
 
         mTerminalCursorBlinkerStateAlreadySet = false;
 
@@ -121,6 +125,15 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
             setTerminalCursorBlinkerState(true);
             mTerminalCursorBlinkerStateAlreadySet = true;
         }
+    }
+
+    public void onTerminalScreenSelected() {
+        setSoftKeyboardState(false, false);
+    }
+
+    public void onTerminalScreenHidden() {
+        KeyboardUtils.hideSoftKeyboard(mActivity, mActivity.getTerminalView());
+        mActivity.getTerminalView().clearFocus();
     }
 
     /**

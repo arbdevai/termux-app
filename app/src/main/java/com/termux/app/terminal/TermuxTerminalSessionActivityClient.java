@@ -132,6 +132,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
             mActivity.showToast(toToastTitle(updatedSession), true);
         }
 
+        mActivity.refreshPremiumShell();
         termuxSessionListNotifyUpdated();
     }
 
@@ -302,6 +303,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
         // be stale, like current session not selected or scrolled to.
         checkAndScrollToSession(session);
         updateBackgroundColor();
+        mActivity.refreshPremiumShell();
     }
 
     void notifyOfSessionChange() {
