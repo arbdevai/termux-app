@@ -1,5 +1,4 @@
 <resources>
     <dimen name="terminal_bottom_bar_height">68dp</dimen>
     <dimen name="terminal_bottom_bar_bottom_margin">8dp</dimen>
-    <dimen name="terminal_toolbar_bottom_gap">8dp</dimen>
 </resources>

@@ -10,9 +10,43 @@
     <style name="Theme.TermuxApp.Light.NoActionBar" parent="Theme.BaseActivity.Light.NoActionBar"/>
 
     <!-- TermuxApp DayNight DarkActionBar theme. -->
-    <style name="Theme.TermuxApp.DayNight.DarkActionBar" parent="Theme.BaseActivity.DayNight.DarkActionBar"/>
+    <style name="Theme.TermuxApp.DayNight.DarkActionBar" parent="Theme.BaseActivity.DayNight.DarkActionBar">
+        <item name="colorPrimary">@color/neon_violet</item>
+        <item name="colorPrimaryVariant">@color/neon_violet_dim</item>
+        <item name="colorPrimaryDark">@color/deep_surface</item>
+        <item name="colorOnPrimary">@color/deep_black</item>
+        <item name="colorSecondary">@color/neon_violet_soft</item>
+        <item name="colorOnSecondary">@color/deep_black</item>
+        <item name="colorSurface">@color/deep_surface</item>
+        <item name="colorOnSurface">@color/glass_text_primary</item>
+        <item name="android:windowBackground">@color/deep_black</item>
+        <item name="android:colorBackground">@color/deep_black</item>
+        <item name="android:textColorPrimary">@color/glass_text_primary</item>
+        <item name="android:textColorSecondary">@color/glass_text_secondary</item>
+        <item name="android:colorAccent">@color/neon_violet</item>
+        <item name="android:navigationBarColor">@color/deep_black</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+    </style>
     <!-- TermuxApp DayNight NoActionBar theme. -->
-    <style name="Theme.TermuxApp.DayNight.NoActionBar" parent="Theme.BaseActivity.DayNight.NoActionBar"/>
+    <style name="Theme.TermuxApp.DayNight.NoActionBar" parent="Theme.BaseActivity.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/neon_violet</item>
+        <item name="colorPrimaryVariant">@color/neon_violet_dim</item>
+        <item name="colorPrimaryDark">@color/deep_surface</item>
+        <item name="colorOnPrimary">@color/deep_black</item>
+        <item name="colorSecondary">@color/neon_violet_soft</item>
+        <item name="colorOnSecondary">@color/deep_black</item>
+        <item name="colorSurface">@color/deep_surface</item>
+        <item name="colorOnSurface">@color/glass_text_primary</item>
+        <item name="android:windowBackground">@color/deep_black</item>
+        <item name="android:colorBackground">@color/deep_black</item>
+        <item name="android:textColorPrimary">@color/glass_text_primary</item>
+        <item name="android:textColorSecondary">@color/glass_text_secondary</item>
+        <item name="android:colorAccent">@color/neon_violet</item>
+        <item name="android:navigationBarColor">@color/deep_black</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+    </style>
 
 
     <!-- TermuxActivity DayNight NoActionBar theme. -->
@@ -37,7 +71,6 @@
         <item name="android:windowActionModeOverlay">true</item>
 
         <item name="android:windowTranslucentStatus">true</item>
-        <item name="android:windowTranslucentNavigation">true</item>
         <item name="android:navigationBarColor">@color/deep_black</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>

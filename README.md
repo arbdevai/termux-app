@@ -8,7 +8,9 @@
 ## Android 14 ARM64 fork build
 
 This fork targets Android 14 (API 34) and newer on `arm64-v8a` devices. The terminal screen
-uses a black and violet glass theme with a bottom action bar and a session bottom sheet.
+uses a black and violet glass theme with a reserved terminal-key dock, a bottom action bar,
+a session bottom sheet, and matching settings surfaces. Extra keys and navigation controls occupy
+their own layout rows so they do not cover terminal content or the Android navigation area.
 
 To build a signed release, run the **Release APK (Android 14 ARM64)** workflow from GitHub
 Actions. It compiles and assembles `:app:assembleRelease`, verifies the APK signature, and

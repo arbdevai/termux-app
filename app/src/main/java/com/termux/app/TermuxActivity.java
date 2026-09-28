@@ -9,7 +9,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
-import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -20,7 +19,6 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewOutlineProvider;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -66,12 +64,9 @@ import com.termux.view.TerminalViewClient;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.view.WindowInsetsCompat;
 import androidx.viewpager.widget.ViewPager;
 
 import com.google.android.material.bottomsheet.BottomSheetDialog;
-import eightbitlab.com.blurview.BlurTarget;
-import eightbitlab.com.blurview.BlurView;
 
 import java.util.Arrays;
 
@@ -184,8 +179,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private boolean mIsInvalidState;
 
     private int mNavBarHeight;
-    private int mNavigationBarInset;
-
     private float mTerminalToolbarDefaultHeight;
 
 
@@ -247,10 +240,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         View content = findViewById(android.R.id.content);
         content.setOnApplyWindowInsetsListener((v, insets) -> {
             mNavBarHeight = insets.getSystemWindowInsetBottom();
-            WindowInsetsCompat windowInsets = WindowInsetsCompat.toWindowInsetsCompat(insets);
-            mNavigationBarInset = windowInsets.isVisible(WindowInsetsCompat.Type.ime()) ? 0 :
-                windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
-            updateTerminalBottomBarInset();
             return insets;
         });
 
@@ -596,17 +585,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
 
     private void setBottomBarView() {
-        BlurView blurView = findViewById(R.id.terminal_bottom_bar_blur);
-        BlurTarget blurTarget = findViewById(R.id.terminal_blur_target);
-        Drawable windowBackground = getWindow().getDecorView().getBackground();
-        blurView.setupWith(blurTarget)
-            .setFrameClearDrawable(windowBackground)
-            .setBlurRadius(18f)
-            .setOverlayColor(0xA60B0912);
-        blurView.setOutlineProvider(ViewOutlineProvider.BACKGROUND);
-        blurView.setClipToOutline(true);
-        updateTerminalBottomBarInset();
-
         LinearLayout bar = findViewById(R.id.terminal_bottom_bar);
         addBottomBarAction(bar, R.drawable.ic_terminal_sessions, R.string.action_sessions, v -> openSessionsPanel(), null);
         addBottomBarAction(bar, R.drawable.ic_terminal_keyboard, R.string.action_toggle_soft_keyboard,
@@ -625,32 +603,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         newSessionAction.findViewById(R.id.action_icon).setBackgroundResource(R.drawable.bg_glass_icon_button);
         addBottomBarAction(bar, R.drawable.ic_settings, R.string.action_open_settings,
             v -> ActivityUtils.startActivity(this, new Intent(this, SettingsActivity.class)), null);
-    }
-
-    private void updateTerminalBottomBarInset() {
-        BlurView blurView = findViewById(R.id.terminal_bottom_bar_blur);
-        int bottomBarBottomMargin = getResources().getDimensionPixelSize(R.dimen.terminal_bottom_bar_bottom_margin);
-
-        if (blurView != null) {
-            ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) blurView.getLayoutParams();
-            int bottomMargin = bottomBarBottomMargin + mNavigationBarInset;
-            if (params.bottomMargin != bottomMargin) {
-                params.bottomMargin = bottomMargin;
-                blurView.setLayoutParams(params);
-            }
-        }
-
-        ViewPager terminalToolbar = findViewById(R.id.terminal_toolbar_view_pager);
-        if (terminalToolbar != null) {
-            RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) terminalToolbar.getLayoutParams();
-            int bottomMargin = getResources().getDimensionPixelSize(R.dimen.terminal_bottom_bar_height) +
-                bottomBarBottomMargin + getResources().getDimensionPixelSize(R.dimen.terminal_toolbar_bottom_gap) +
-                mNavigationBarInset;
-            if (params.bottomMargin != bottomMargin) {
-                params.bottomMargin = bottomMargin;
-                terminalToolbar.setLayoutParams(params);
-            }
-        }
     }
 
     private View addBottomBarAction(LinearLayout bar, int icon, int label, View.OnClickListener click,
