@@ -107,6 +107,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final String KEY_TERMINAL_CANVAS_INSET = "terminal_canvas_inset_dp";
     private static final String KEY_TERMINAL_CANVAS_PRESET = "terminal_canvas_preset";
     private static final String KEY_TERMINAL_FONT = "terminal_font";
+    private static final String KEY_BUNDLED_FONT_BUILD = "bundled_font_build";
+    private static final int BUNDLED_FONT_BUILD = 127;
     private static final String CHROOT_CODER_HOME = "/data/local/ubuntu-chroot/home/coder";
     private int mSelectedScreen = SCREEN_WORKSPACE;
     private int mTerminalCanvasInsetDp;
@@ -122,6 +124,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private SeekBar mTerminalFontSizeSeekBar;
     private LinearLayout mTerminalPresetOptions;
     private LinearLayout mTerminalFontOptions;
+    private Typeface mDevboxTypeface;
     private LinearLayout mFileList;
     private final Set<String> mRootListedDirectories = new HashSet<>();
     private ArrayList<File> mRootBrowserEntries;
@@ -312,6 +315,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         }
 
         setTermuxTerminalViewAndClients();
+        applyBundledDefaultTerminalFont();
 
         setTerminalToolbarView(savedInstanceState);
 
@@ -1171,6 +1175,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         addText(card, "TERMINAL TYPEFACE", 10, true, R.color.neon_violet_soft, 0, 8);
         mTerminalFontOptions = new LinearLayout(this);
         mTerminalFontOptions.setOrientation(LinearLayout.VERTICAL);
+        addTerminalFontOption("Google Sans Code", "DevBox's default terminal font", 3, "fonts/GoogleSansCode.ttf");
         addTerminalFontOption("JetBrains Mono", "Balanced and easy to scan", 0, "fonts/JetBrainsMono.ttf");
         addTerminalFontOption("Roboto Mono", "Familiar shapes with clear spacing", 1, "fonts/RobotoMono.ttf");
         addTerminalFontOption("Fira Code", "Distinct punctuation for coding", 2, "fonts/FiraCode.ttf");
@@ -1224,7 +1229,33 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         });
         mTerminalFontSizeLabel.setText(fontDp + " dp");
         updateTerminalPresetSelection(mTerminalCanvasPreset);
-        updateTerminalFontSelection(getSharedPreferences(DEVBOX_UI_PREFERENCES, MODE_PRIVATE).getInt(KEY_TERMINAL_FONT, -1));
+        updateTerminalFontSelection(getSharedPreferences(DEVBOX_UI_PREFERENCES, MODE_PRIVATE).getInt(KEY_TERMINAL_FONT, 3));
+    }
+
+    private void applyBundledDefaultTerminalFont() {
+        android.content.SharedPreferences uiPreferences = getSharedPreferences(DEVBOX_UI_PREFERENCES, MODE_PRIVATE);
+        if (uiPreferences.getInt(KEY_BUNDLED_FONT_BUILD, 0) >= BUNDLED_FONT_BUILD) return;
+        File destination = TermuxConstants.TERMUX_FONT_FILE;
+        File temporary = new File(destination.getParentFile(), "font.ttf.new");
+        try {
+            File parent = destination.getParentFile();
+            if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new IOException("Could not create font folder");
+            try (InputStream input = getAssets().open("fonts/GoogleSansCode.ttf"); OutputStream output = new FileOutputStream(temporary)) {
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+            }
+            Typeface typeface = Typeface.createFromFile(temporary);
+            if (!temporary.renameTo(destination)) throw new IOException("Could not activate bundled font");
+            mTerminalView.setTypeface(typeface);
+            uiPreferences.edit()
+                .putInt(KEY_TERMINAL_FONT, 3)
+                .putInt(KEY_BUNDLED_FONT_BUILD, BUNDLED_FONT_BUILD)
+                .apply();
+        } catch (Exception e) {
+            temporary.delete();
+            Logger.logStackTraceWithMessage(LOG_TAG, "Could not apply bundled Google Sans Code font", e);
+        }
     }
 
     private void addTerminalFontOption(String title, String subtitle, int id, String assetPath) {
@@ -1265,6 +1296,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (id == 0) return "JetBrains Mono";
         if (id == 1) return "Roboto Mono";
         if (id == 2) return "Fira Code";
+        if (id == 3) return "Google Sans Code";
         return "Custom font";
     }
 
@@ -1385,7 +1417,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         text.setTextSize(size);
         text.setTextColor(getColor(color));
         text.setIncludeFontPadding(false);
-        text.setTypeface(Typeface.create("sans-serif", bold ? Typeface.BOLD : Typeface.NORMAL));
+        if (mDevboxTypeface == null) mDevboxTypeface = Typeface.createFromAsset(getAssets(), "fonts/GoogleSansCode.ttf");
+        text.setTypeface(Typeface.create(mDevboxTypeface, bold ? Typeface.BOLD : Typeface.NORMAL));
         return text;
     }
 
