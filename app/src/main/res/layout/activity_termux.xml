@@ -52,14 +52,14 @@
             android:layout_height="wrap_content"
             android:layout_gravity="bottom"
             android:layout_marginHorizontal="12dp"
-            android:layout_marginBottom="8dp"
+            android:layout_marginBottom="@dimen/terminal_bottom_bar_bottom_margin"
             android:background="@drawable/bg_terminal_glass_bar"
             android:clipToOutline="true">
 
             <LinearLayout
                 android:id="@+id/terminal_bottom_bar"
                 android:layout_width="match_parent"
-                android:layout_height="68dp"
+                android:layout_height="@dimen/terminal_bottom_bar_height"
                 android:gravity="center"
                 android:orientation="horizontal"
                 android:paddingHorizontal="8dp" />

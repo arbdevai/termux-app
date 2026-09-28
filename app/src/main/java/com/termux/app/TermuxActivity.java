@@ -629,13 +629,27 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void updateTerminalBottomBarInset() {
         BlurView blurView = findViewById(R.id.terminal_bottom_bar_blur);
-        if (blurView == null) return;
+        int bottomBarBottomMargin = getResources().getDimensionPixelSize(R.dimen.terminal_bottom_bar_bottom_margin);
 
-        ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) blurView.getLayoutParams();
-        int bottomMargin = (int) ViewUtils.dpToPx(this, 8) + mNavigationBarInset;
-        if (params.bottomMargin != bottomMargin) {
-            params.bottomMargin = bottomMargin;
-            blurView.setLayoutParams(params);
+        if (blurView != null) {
+            ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) blurView.getLayoutParams();
+            int bottomMargin = bottomBarBottomMargin + mNavigationBarInset;
+            if (params.bottomMargin != bottomMargin) {
+                params.bottomMargin = bottomMargin;
+                blurView.setLayoutParams(params);
+            }
+        }
+
+        ViewPager terminalToolbar = findViewById(R.id.terminal_toolbar_view_pager);
+        if (terminalToolbar != null) {
+            RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) terminalToolbar.getLayoutParams();
+            int bottomMargin = getResources().getDimensionPixelSize(R.dimen.terminal_bottom_bar_height) +
+                bottomBarBottomMargin + getResources().getDimensionPixelSize(R.dimen.terminal_toolbar_bottom_gap) +
+                mNavigationBarInset;
+            if (params.bottomMargin != bottomMargin) {
+                params.bottomMargin = bottomMargin;
+                terminalToolbar.setLayoutParams(params);
+            }
         }
     }
 
