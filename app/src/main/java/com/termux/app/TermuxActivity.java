@@ -754,7 +754,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (screen == SCREEN_FILES) refreshFileList();
         if (screen == SCREEN_WORKSPACE) refreshPremiumShell();
         if (screen == SCREEN_TERMINAL && mTerminalViewClientReady()) mTermuxTerminalViewClient.onTerminalScreenSelected();
-        else if (previousScreen == SCREEN_TERMINAL && mTermuxTerminalViewClientReady()) mTermuxTerminalViewClient.onTerminalScreenHidden();
+        else if (previousScreen == SCREEN_TERMINAL && mTerminalViewClientReady()) mTermuxTerminalViewClient.onTerminalScreenHidden();
     }
 
     private boolean mTerminalViewClientReady() {
