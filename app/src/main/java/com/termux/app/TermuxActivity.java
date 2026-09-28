@@ -66,6 +66,7 @@ import com.termux.view.TerminalViewClient;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.viewpager.widget.ViewPager;
 
 import com.google.android.material.bottomsheet.BottomSheetDialog;
@@ -183,6 +184,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private boolean mIsInvalidState;
 
     private int mNavBarHeight;
+    private int mNavigationBarInset;
 
     private float mTerminalToolbarDefaultHeight;
 
@@ -245,6 +247,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         View content = findViewById(android.R.id.content);
         content.setOnApplyWindowInsetsListener((v, insets) -> {
             mNavBarHeight = insets.getSystemWindowInsetBottom();
+            WindowInsetsCompat windowInsets = WindowInsetsCompat.toWindowInsetsCompat(insets);
+            mNavigationBarInset = windowInsets.isVisible(WindowInsetsCompat.Type.ime()) ? 0 :
+                windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
+            updateTerminalBottomBarInset();
             return insets;
         });
 
@@ -599,6 +605,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             .setOverlayColor(0xA60B0912);
         blurView.setOutlineProvider(ViewOutlineProvider.BACKGROUND);
         blurView.setClipToOutline(true);
+        updateTerminalBottomBarInset();
 
         LinearLayout bar = findViewById(R.id.terminal_bottom_bar);
         addBottomBarAction(bar, R.drawable.ic_terminal_sessions, R.string.action_sessions, v -> openSessionsPanel(), null);
@@ -618,6 +625,18 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         newSessionAction.findViewById(R.id.action_icon).setBackgroundResource(R.drawable.bg_glass_icon_button);
         addBottomBarAction(bar, R.drawable.ic_settings, R.string.action_open_settings,
             v -> ActivityUtils.startActivity(this, new Intent(this, SettingsActivity.class)), null);
+    }
+
+    private void updateTerminalBottomBarInset() {
+        BlurView blurView = findViewById(R.id.terminal_bottom_bar_blur);
+        if (blurView == null) return;
+
+        ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) blurView.getLayoutParams();
+        int bottomMargin = (int) ViewUtils.dpToPx(this, 8) + mNavigationBarInset;
+        if (params.bottomMargin != bottomMargin) {
+            params.bottomMargin = bottomMargin;
+            blurView.setLayoutParams(params);
+        }
     }
 
     private View addBottomBarAction(LinearLayout bar, int icon, int label, View.OnClickListener click,
