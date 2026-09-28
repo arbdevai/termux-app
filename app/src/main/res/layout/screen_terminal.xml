@@ -77,7 +77,10 @@
             android:id="@+id/activity_termux_root_relative_layout"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_marginHorizontal="3dp">
+            android:layout_marginHorizontal="3dp"
+            android:background="@drawable/bg_terminal_canvas"
+            android:clipToOutline="true"
+            android:padding="6dp">
 
             <com.termux.view.TerminalView
                 android:id="@+id/terminal_view"

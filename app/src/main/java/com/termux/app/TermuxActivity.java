@@ -27,6 +27,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.RelativeLayout;
+import android.widget.SeekBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -94,7 +95,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final int SCREEN_FILES = 2;
     private static final int SCREEN_TOOLS = 3;
     private static final int SCREEN_SETTINGS = 4;
+    private static final String DEVBOX_UI_PREFERENCES = "devbox_ui_preferences";
+    private static final String KEY_TERMINAL_CANVAS_INSET = "terminal_canvas_inset_dp";
+    private static final String KEY_TERMINAL_CANVAS_PRESET = "terminal_canvas_preset";
     private int mSelectedScreen = SCREEN_WORKSPACE;
+    private int mTerminalCanvasInsetDp;
+    private int mTerminalCanvasPreset = -1;
     private File mCurrentFileDirectory;
     private LinearLayout mWorkspaceContent;
     private LinearLayout mFilesContent;
@@ -102,6 +108,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private LinearLayout mSettingsContent;
     private TextView mWorkspaceSessionSummary;
     private TextView mFilesPathLabel;
+    private TextView mTerminalFontSizeLabel;
+    private SeekBar mTerminalFontSizeSeekBar;
+    private LinearLayout mTerminalPresetOptions;
     private LinearLayout mFileList;
     private final ArrayList<View> mNavigationItems = new ArrayList<>();
 
@@ -254,6 +263,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mIsInvalidState = true;
             return;
         }
+
+        android.content.SharedPreferences uiPreferences = getSharedPreferences(DEVBOX_UI_PREFERENCES, MODE_PRIVATE);
+        mTerminalCanvasInsetDp = uiPreferences.getInt(KEY_TERMINAL_CANVAS_INSET, 0);
+        mTerminalCanvasPreset = uiPreferences.getInt(KEY_TERMINAL_CANVAS_PRESET, -1);
 
         setMargins();
 
@@ -517,8 +530,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void setMargins() {
         RelativeLayout relativeLayout = findViewById(R.id.activity_termux_root_relative_layout);
-        int marginHorizontal = mProperties.getTerminalMarginHorizontal();
-        int marginVertical = mProperties.getTerminalMarginVertical();
+        int marginHorizontal = mProperties.getTerminalMarginHorizontal() + mTerminalCanvasInsetDp;
+        int marginVertical = mProperties.getTerminalMarginVertical() + mTerminalCanvasInsetDp;
         ViewUtils.setLayoutMarginsInDp(relativeLayout, marginHorizontal, marginVertical, marginHorizontal, marginVertical);
     }
 
@@ -1003,11 +1016,124 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             new Intent(this, SettingsActivity.class)));
         mSettingsContent.addView(appearance, pageLayout());
 
+        addSectionTitle(mSettingsContent, "Terminal canvas", "Set the balance between more content and larger text.");
+        buildTerminalCanvasControls();
+
         addSectionTitle(mSettingsContent, "App", "Support and information.");
         addSettingsLink(mSettingsContent, "Help & keyboard shortcuts", "Learn the controls", () ->
             ActivityUtils.startActivity(this, new Intent(this, HelpActivity.class)));
         addSettingsLink(mSettingsContent, "More preferences", "Additional app and integration controls", () ->
             ActivityUtils.startActivity(this, new Intent(this, SettingsActivity.class)));
+    }
+
+    private void buildTerminalCanvasControls() {
+        LinearLayout card = premiumCard(false);
+        addText(card, "VIEWPORT PROFILE", 10, true, R.color.neon_violet_soft, 0, 10);
+
+        mTerminalPresetOptions = new LinearLayout(this);
+        mTerminalPresetOptions.setOrientation(LinearLayout.HORIZONTAL);
+        addTerminalPresetOption("Compact", 0);
+        addTerminalPresetOption("Balanced", 1);
+        addTerminalPresetOption("Roomy", 2);
+        card.addView(mTerminalPresetOptions, pageLayout());
+
+        LinearLayout fontHeader = new LinearLayout(this);
+        fontHeader.setGravity(Gravity.CENTER_VERTICAL);
+        fontHeader.setOrientation(LinearLayout.HORIZONTAL);
+        TextView fontTitle = premiumText("Font size", 13, true, R.color.glass_text_primary);
+        fontHeader.addView(fontTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        mTerminalFontSizeLabel = premiumText("", 11, true, R.color.neon_violet_soft);
+        fontHeader.addView(mTerminalFontSizeLabel, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        card.addView(fontHeader);
+
+        mTerminalFontSizeSeekBar = new SeekBar(this);
+        mTerminalFontSizeSeekBar.setMax(24);
+        int fontDp = Math.round(mPreferences.getFontSize() / getResources().getDisplayMetrics().density);
+        mTerminalFontSizeSeekBar.setProgress(Math.max(0, Math.min(24, fontDp - 8)));
+        card.addView(mTerminalFontSizeSeekBar, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(40)));
+        addText(card, "Smaller text fits more lines. The terminal grid resizes automatically.",
+            10, false, R.color.glass_text_secondary, 0, 0);
+        mSettingsContent.addView(card, pageLayout());
+
+        mTerminalFontSizeSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (!fromUser) return;
+                int requestedFontDp = progress + 8;
+                int requestedFontPx = Math.round(requestedFontDp * getResources().getDisplayMetrics().density);
+                mPreferences.setFontSize(requestedFontPx);
+                mTerminalView.setTextSize(requestedFontPx);
+                mTerminalFontSizeLabel.setText(requestedFontDp + " dp");
+                mTerminalCanvasPreset = -1;
+                getSharedPreferences(DEVBOX_UI_PREFERENCES, MODE_PRIVATE).edit()
+                    .putInt(KEY_TERMINAL_CANVAS_PRESET, -1).apply();
+                updateTerminalPresetSelection(-1);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) { }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) { }
+        });
+        mTerminalFontSizeLabel.setText(fontDp + " dp");
+        updateTerminalPresetSelection(mTerminalCanvasPreset);
+    }
+
+    private void addTerminalPresetOption(String label, int index) {
+        TextView option = premiumText(label, 10, true, R.color.glass_text_secondary);
+        option.setGravity(Gravity.CENTER);
+        option.setPadding(dp(3), dp(11), dp(3), dp(11));
+        option.setBackgroundResource(R.drawable.bg_premium_card);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        params.setMargins(dp(2), 0, dp(2), 0);
+        mTerminalPresetOptions.addView(option, params);
+        option.setOnClickListener(v -> applyTerminalCanvasPreset(index));
+    }
+
+    private void applyTerminalCanvasPreset(int index) {
+        int defaultFontPx = TermuxAppSharedPreferences.getDefaultFontSizes(this)[0];
+        float density = getResources().getDisplayMetrics().density;
+        int insetDp;
+        int fontDp;
+        switch (index) {
+            case 0:
+                insetDp = 0;
+                fontDp = Math.max(8, Math.round(defaultFontPx / density) - 2);
+                break;
+            case 2:
+                insetDp = 12;
+                fontDp = Math.round(defaultFontPx / density) + 2;
+                break;
+            default:
+                insetDp = 5;
+                fontDp = Math.round(defaultFontPx / density);
+                break;
+        }
+        mTerminalCanvasInsetDp = insetDp;
+        getSharedPreferences(DEVBOX_UI_PREFERENCES, MODE_PRIVATE).edit()
+            .putInt(KEY_TERMINAL_CANVAS_INSET, insetDp)
+            .putInt(KEY_TERMINAL_CANVAS_PRESET, index).apply();
+        mTerminalCanvasPreset = index;
+        int fontPx = Math.round(fontDp * density);
+        mPreferences.setFontSize(fontPx);
+        mTerminalView.setTextSize(fontPx);
+        setMargins();
+        mTerminalFontSizeLabel.setText(fontDp + " dp");
+        mTerminalFontSizeSeekBar.setProgress(Math.max(0, Math.min(24, fontDp - 8)));
+        updateTerminalPresetSelection(index);
+    }
+
+    private void updateTerminalPresetSelection(int selectedIndex) {
+        if (mTerminalPresetOptions == null) return;
+        for (int i = 0; i < mTerminalPresetOptions.getChildCount(); i++) {
+            TextView option = (TextView) mTerminalPresetOptions.getChildAt(i);
+            boolean selected = i == selectedIndex;
+            option.setBackgroundResource(selected ? R.drawable.bg_action_pill : R.drawable.bg_premium_card);
+            option.setTextColor(getColor(selected ? R.color.glass_text_primary : R.color.glass_text_secondary));
+        }
     }
 
     private void addSettingsLink(LinearLayout parent, String title, String subtitle, Runnable action) {
