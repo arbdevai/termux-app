@@ -1,0 +1,78 @@
+name: Release APK (Android 14 ARM64)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TERMUX_PACKAGE_VARIANT: apt-android-7
+      TERMUX_APP_VERSION_NAME: 0.118.0+${{ github.sha }}
+      TERMUX_APP_VERSION_CODE: ${{ 118 + github.run_number }}
+      TERMUX_APK_VERSION_TAG: ${{ github.sha }}-android14-arm64-release
+      RELEASE_KEYSTORE_PATH: ${{ github.workspace }}/.signing/release-signing.p12
+      RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+      RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+      RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up Java 17 and restore Gradle cache
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Restore verified ARM64 bootstrap cache
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/cpp/bootstrap-aarch64.zip
+          key: termux-bootstrap-android7-2026.02.12-r1-arm64
+
+      - name: Prepare release signing key
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_KEYSTORE_BASE64" || { echo "Missing RELEASE_KEYSTORE_BASE64 secret"; exit 1; }
+          mkdir -p .signing
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RELEASE_KEYSTORE_PATH"
+          chmod 600 "$RELEASE_KEYSTORE_PATH"
+          test -n "$RELEASE_KEYSTORE_PASSWORD" || { echo "Missing RELEASE_KEYSTORE_PASSWORD secret"; exit 1; }
+          test -n "$RELEASE_KEY_PASSWORD" || { echo "Missing RELEASE_KEY_PASSWORD secret"; exit 1; }
+          test -n "$RELEASE_KEY_ALIAS" || { echo "Missing RELEASE_KEY_ALIAS secret"; exit 1; }
+
+      - name: Compile and assemble signed release APK
+        run: ./gradlew --no-daemon --parallel --max-workers=2 :app:compileReleaseJavaWithJavac :app:assembleRelease
+
+      - name: Verify release signature and prepare artifact
+        run: |
+          set -euo pipefail
+          apk_path="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$apk_path"
+          apksigner_path="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print -quit)"
+          test -n "$apksigner_path"
+          "$apksigner_path" verify --verbose "$apk_path"
+          mkdir -p handoff
+          cp "$apk_path" handoff/
+          (cd handoff && sha256sum ./*.apk > SHA256SUMS)
+
+      - name: Upload signed release APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: termux-android14-arm64-release-${{ github.sha }}
+          path: handoff/
+          if-no-files-found: error
+          retention-days: 30

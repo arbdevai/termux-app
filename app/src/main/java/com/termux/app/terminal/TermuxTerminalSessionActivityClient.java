@@ -384,7 +384,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
             TerminalSession newTerminalSession = newTermuxSession.getTerminalSession();
             setCurrentSession(newTerminalSession);
 
-            mActivity.getDrawer().closeDrawers();
+            mActivity.closeSessionsPanel();
         }
     }
 
@@ -462,7 +462,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
         final int indexOfSession = service.getIndexOfSession(session);
         if (indexOfSession < 0) return;
-        final ListView termuxSessionsListView = mActivity.findViewById(R.id.terminal_sessions_list);
+        final ListView termuxSessionsListView = mActivity.getTermuxSessionsListView();
         if (termuxSessionsListView == null) return;
 
         termuxSessionsListView.setItemChecked(indexOfSession, true);

@@ -1,10 +1,27 @@
 # Termux application
 
-[![Build status](https://github.com/termux/termux-app/workflows/Build/badge.svg)](https://github.com/termux/termux-app/actions)
-[![Testing status](https://github.com/termux/termux-app/workflows/Unit%20tests/badge.svg)](https://github.com/termux/termux-app/actions)
+[![Release APK status](https://github.com/arbdevai/termux-app/actions/workflows/release-apk.yml/badge.svg)](https://github.com/arbdevai/termux-app/actions/workflows/release-apk.yml)
 [![Join the chat at https://gitter.im/termux/termux](https://badges.gitter.im/termux/termux.svg)](https://gitter.im/termux/termux)
 [![Join the Termux discord server](https://img.shields.io/discord/641256914684084234.svg?label=&logo=discord&logoColor=ffffff&color=5865F2)](https://discord.gg/HXpF69X)
 [![Termux library releases at Jitpack](https://jitpack.io/v/termux/termux-app.svg)](https://jitpack.io/#termux/termux-app)
+
+## Android 14 ARM64 fork build
+
+This fork targets Android 14 (API 34) and newer on `arm64-v8a` devices. The terminal screen
+uses a black and violet glass theme with a bottom action bar and a session bottom sheet.
+
+To build a signed release, run the **Release APK (Android 14 ARM64)** workflow from GitHub
+Actions. It compiles and assembles `:app:assembleRelease`, verifies the APK signature, and
+uploads the APK and SHA-256 checksum as a workflow artifact. The workflow does not run tests,
+lint, or other quality gates. It caches Gradle dependencies and the checksum-verified ARM64
+bootstrap archive.
+
+The release workflow expects repository Actions secrets named `RELEASE_KEYSTORE_BASE64`,
+`RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_PASSWORD`, and `RELEASE_KEY_ALIAS`. Keep a secure
+backup of the keystore; every update must use the same signing key. Since this fork uses the
+`com.termux` application ID, a release signed with its own key cannot update an APK signed by
+Termux's official release key. Android requires uninstalling the other signing identity before
+installing this fork, which removes that app's private data unless it has been backed up.
 
 
 [Termux](https://termux.dev) is an Android terminal application and Linux environment.

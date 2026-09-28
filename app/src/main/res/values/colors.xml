@@ -1,3 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="deep_black">#07060B</color>
+    <color name="deep_surface">#0D0B13</color>
+    <color name="glass_surface">#17131F</color>
+    <color name="neon_violet">#B88AFF</color>
+    <color name="neon_violet_soft">#D1B5FF</color>
+    <color name="neon_violet_dim">#7650A8</color>
+    <color name="glass_text_primary">#F5F0FF</color>
+    <color name="glass_text_secondary">#B8AEC9</color>
 </resources>

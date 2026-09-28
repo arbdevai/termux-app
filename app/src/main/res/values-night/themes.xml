@@ -9,10 +9,19 @@
     <!-- NOTE: Cannot use "Light." since it hides the terminal scrollbar on the default black background. -->
     <style name="Theme.TermuxActivity.DayNight.NoActionBar" parent="Theme.TermuxApp.DayNight.NoActionBar">
         <!-- Primary brand color. -->
-        <item name="colorPrimary">@color/black</item>
-        <item name="colorPrimaryVariant">@color/black</item>
+        <item name="colorPrimary">@color/neon_violet</item>
+        <item name="colorPrimaryVariant">@color/neon_violet_dim</item>
+        <item name="colorOnPrimary">@color/deep_black</item>
+        <item name="colorSecondary">@color/neon_violet_soft</item>
+        <item name="colorOnSecondary">@color/deep_black</item>
+        <item name="colorSurface">@color/deep_surface</item>
+        <item name="colorOnSurface">@color/glass_text_primary</item>
 
-        <item name="android:windowBackground">@color/black</item>
+        <item name="android:windowBackground">@color/deep_black</item>
+        <item name="android:colorBackground">@color/deep_black</item>
+        <item name="android:textColorPrimary">@color/glass_text_primary</item>
+        <item name="android:textColorSecondary">@color/glass_text_secondary</item>
+        <item name="android:colorAccent">@color/neon_violet</item>
 
         <!-- Avoid action mode toolbar pushing down terminal content when
              selecting text on pre-6.0 (non-floating toolbar). -->
@@ -20,6 +29,11 @@
 
         <item name="android:windowTranslucentStatus">true</item>
         <item name="android:windowTranslucentNavigation">true</item>
+        <item name="android:navigationBarColor">@color/deep_black</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
 
         <!-- https://developer.android.com/training/tv/start/start.html#transition-color -->
         <item name="android:windowAllowReturnTransitionOverlap">true</item>
@@ -27,14 +41,14 @@
 
         <!-- Left drawer. -->
         <item name="buttonBarButtonStyle">@style/TermuxActivity.Drawer.ButtonBarStyle.Dark</item>
-        <item name="termuxActivityDrawerBackground">@color/black</item>
-        <item name="termuxActivityDrawerImageTint">@color/white</item>
+        <item name="termuxActivityDrawerBackground">@color/deep_surface</item>
+        <item name="termuxActivityDrawerImageTint">@color/neon_violet</item>
 
         <!-- Extra keys colors. -->
         <item name="extraKeysButtonTextColor">@color/white</item>
-        <item name="extraKeysButtonActiveTextColor">@color/red_400</item>
-        <item name="extraKeysButtonBackgroundColor">@color/black</item>
-        <item name="extraKeysButtonActiveBackgroundColor">@color/grey_500</item>
+        <item name="extraKeysButtonActiveTextColor">@color/neon_violet_soft</item>
+        <item name="extraKeysButtonBackgroundColor">@color/deep_surface</item>
+        <item name="extraKeysButtonActiveBackgroundColor">@color/neon_violet_dim</item>
     </style>
 
 </resources>

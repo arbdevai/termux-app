@@ -1,0 +1,6 @@
+<resources>
+    <plurals name="label_active_sessions">
+        <item quantity="one">%d session</item>
+        <item quantity="other">%d sessions</item>
+    </plurals>
+</resources>
