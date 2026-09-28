@@ -17,7 +17,7 @@ jobs:
     env:
       TERMUX_PACKAGE_VARIANT: apt-android-7
       TERMUX_APP_VERSION_NAME: 0.118.0+${{ github.sha }}
-      TERMUX_APP_VERSION_CODE: ${{ 118 + github.run_number }}
+      TERMUX_APP_VERSION_CODE: 119
       TERMUX_APK_VERSION_TAG: ${{ github.sha }}-android14-arm64-release
       RELEASE_KEYSTORE_PATH: ${{ github.workspace }}/.signing/release-signing.p12
       RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
